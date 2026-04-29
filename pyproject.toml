@@ -1,0 +1,89 @@
+[tool.poetry]
+name = "lifecycle-platform-challenge"
+version = "0.1.0"
+description = "Senior Lifecycle Platform Engineer take-home: SQL audience, ESP sender, Airflow DAG, value-model design, and observability."
+authors = ["Luis Fernando Vargas Menendez"]
+readme = "README.md"
+license = "MIT"
+packages = [{ include = "lifecycle_platform", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+structlog = "^24.4.0"
+tenacity = "^9.0.0"
+pyyaml = "^6.0.2"
+requests = "^2.32.3"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+pytest-cov = "^5.0.0"
+duckdb = "^1.1.3"
+sqlglot = "^25.30.0"
+ruff = "^0.7.4"
+black = "^24.10.0"
+mypy = "^1.13.0"
+types-requests = "^2.32.0"
+types-pyyaml = "^6.0.12"
+
+[tool.poetry.group.airflow]
+# Airflow lives in its own optional group so the runtime install stays slim.
+# It is required only to parse the DAG in tests/test_dag_parses.py.
+optional = true
+
+[tool.poetry.group.airflow.dependencies]
+apache-airflow = "2.9.3"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "airflow: tests that require apache-airflow to be installed",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["lifecycle_platform"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",  # pycodestyle / pyflakes
+    "I",            # isort
+    "B",            # bugbear
+    "UP",           # pyupgrade
+    "SIM",          # simplify
+    "C4",           # comprehensions
+    "RET",          # return patterns
+]
+ignore = ["E501"]  # line length handled by black
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+files = ["src"]

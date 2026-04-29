@@ -1,0 +1,48 @@
+# =============================================================================
+# Lifecycle campaign segment registry
+# =============================================================================
+# Each entry describes a single audience-segment + model + send-channel combo.
+# The reactivation DAG iterates over this list with Airflow's dynamic task
+# mapping (one task group per segment) so a new model = one PR to this file,
+# not a code change.
+#
+# Schema (validated at DAG parse time by airflow/dags/_segment_loader.py):
+#
+#   id                Required. Stable identifier; used for XCom keys and
+#                     reporting / Datadog tags.
+#   campaign_id       Required. ESP campaign identifier.
+#   sql_template      Required. Path (repo-relative) to the BigQuery SQL.
+#   model_table       Required. Fully qualified BigQuery table for scores.
+#   model_version_pin Optional. If set, only rows with this model_version are
+#                     used; null means "latest available".
+#   threshold         Required. Minimum predicted conversion probability.
+#   freshness_sla     Required. Hours within which the model table must be
+#                     refreshed for the segment to send.
+#   on_model_missing  Required. One of:
+#                       - wait              : reschedule until freshness_sla,
+#                                             then escalate (default).
+#                       - skip              : skip the segment for the day.
+#                       - fallback_unscored : send the unscored Part-1 audience
+#                                             (escape hatch; rarely the right
+#                                             choice - see design doc).
+# =============================================================================
+
+segments:
+  - id: churned_renters_sms
+    campaign_id: reactivation_sms_v1
+    sql_template: sql/part4_audience_scored.sql
+    model_table: ml_predictions.renter_send_scores
+    model_version_pin: null
+    threshold: 0.30
+    freshness_sla: 2  # hours after DAG start
+    on_model_missing: wait
+
+  # Example second segment slated for week ~6:
+  # - id: high_intent_movers_email
+  #   campaign_id: high_intent_email_v1
+  #   sql_template: sql/part4_audience_scored.sql
+  #   model_table: ml_predictions.renter_high_intent_scores
+  #   model_version_pin: v3
+  #   threshold: 0.55
+  #   freshness_sla: 3
+  #   on_model_missing: skip
