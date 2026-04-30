@@ -16,11 +16,6 @@ from tests.conftest import DEFAULT_RUN_DATE, SQL_DIR, render_sql_for_duckdb
 PART1_SQL = SQL_DIR / "part1_audience.sql"
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _profile(renter_id: str, **overrides: object) -> dict[str, object]:
     """Build a renter_profiles row that defaults to passing every rule.
 
@@ -66,11 +61,6 @@ def _run_audience(duck) -> list[tuple[object, ...]]:
 
 def _renter_ids(rows: list[tuple[object, ...]]) -> set[str]:
     return {row[0] for row in rows}
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 
 def test_returns_required_columns(duck, insert) -> None:

@@ -16,10 +16,6 @@ from lifecycle_platform.campaign_sender import execute_campaign_send
 from lifecycle_platform.dedup import SentLog
 from lifecycle_platform.esp_client import ESPClient, Response
 
-# ---------------------------------------------------------------------------
-# Test doubles
-# ---------------------------------------------------------------------------
-
 
 class FakeESP(ESPClient):
     """ESPClient whose ``send_batch`` is driven by a callable."""
@@ -46,11 +42,6 @@ def log_path(tmp_path: Path) -> Path:
     return tmp_path / "sent.json"
 
 
-# ---------------------------------------------------------------------------
-# Happy path
-# ---------------------------------------------------------------------------
-
-
 def test_sends_full_audience_in_batches_of_100(log_path: Path) -> None:
     audience = _audience(250)
     esp = FakeESP()
@@ -63,7 +54,6 @@ def test_sends_full_audience_in_batches_of_100(log_path: Path) -> None:
     assert "elapsed_seconds" in summary
 
     assert [len(b) for _, b in esp.calls] == [100, 100, 50]
-    # All 250 ids made it onto the sent log
     assert SentLog(log_path).load("camp_1") == {r["renter_id"] for r in audience}
 
 
@@ -85,11 +75,6 @@ def test_empty_audience_is_a_zero_summary_no_calls(log_path: Path) -> None:
     assert summary["total_failed"] == 0
     assert summary["total_skipped"] == 0
     assert esp.calls == []
-
-
-# ---------------------------------------------------------------------------
-# Dedup
-# ---------------------------------------------------------------------------
 
 
 def test_skips_recipients_already_in_sent_log(log_path: Path) -> None:
@@ -129,13 +114,7 @@ def test_rerun_is_idempotent(log_path: Path) -> None:
     assert esp2.calls == []
 
 
-# ---------------------------------------------------------------------------
-# Rate limiting / retries
-# ---------------------------------------------------------------------------
-
-
 def test_429_then_200_succeeds(log_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Make the backoff sleeps instant.
     monkeypatch.setattr("tenacity.nap.time.sleep", lambda *_: None)
 
     sequence = [Response(429), Response(429), Response(200, {"ok": True})]
@@ -162,11 +141,6 @@ def test_persistent_429_counts_as_failure(log_path: Path, monkeypatch: pytest.Mo
     assert len(esp.calls) == 6
 
 
-# ---------------------------------------------------------------------------
-# Error isolation
-# ---------------------------------------------------------------------------
-
-
 def test_one_failed_batch_does_not_abort_run(log_path: Path) -> None:
     """Batch 1 returns 500, batches 0 and 2 succeed."""
     call_index = {"i": 0}
@@ -182,7 +156,6 @@ def test_one_failed_batch_does_not_abort_run(log_path: Path) -> None:
     # 3 batches of (100, 100, 50). Batch index 1 (100 rows) fails, the other two succeed.
     assert summary["total_sent"] == 150
     assert summary["total_failed"] == 100
-    # Failed batch's ids must NOT be marked as sent
     sent = SentLog(log_path).load("camp_1")
     assert len(sent) == 150
 
@@ -212,11 +185,6 @@ def test_all_batches_fail_returns_zero_sent(log_path: Path) -> None:
     assert summary["total_failed"] == 250
 
 
-# ---------------------------------------------------------------------------
-# Crash resume
-# ---------------------------------------------------------------------------
-
-
 def test_crash_after_first_batch_does_not_double_send_on_retry(log_path: Path) -> None:
     """Simulate a crash mid-run: first batch persisted, then exception."""
     state = {"call": 0}
@@ -231,27 +199,19 @@ def test_crash_after_first_batch_does_not_double_send_on_retry(log_path: Path) -
     audience = _audience(150)
 
     with pytest.raises(SystemExit):
-        # call_with_retry treats SystemExit as a non-retryable raise; we let it
-        # propagate to mimic a hard crash that bypasses our try/except (we
-        # explicitly catch Exception, not BaseException).
+        # SystemExit bypasses our try/except (we catch Exception, not
+        # BaseException), mimicking a hard worker crash.
         execute_campaign_send("camp_1", audience, esp_crash, str(log_path))
 
-    # First batch's renter_ids should be persisted on disk.
     persisted = SentLog(log_path).load("camp_1")
     assert len(persisted) == 100
 
-    # Now retry with a healthy ESP - only the remaining 50 should ship.
     esp_healthy = FakeESP()
     summary = execute_campaign_send("camp_1", audience, esp_healthy, str(log_path))
 
     assert summary["total_sent"] == 50
     assert summary["total_skipped"] == 100
     assert len(esp_healthy.calls) == 1
-
-
-# ---------------------------------------------------------------------------
-# Defensive
-# ---------------------------------------------------------------------------
 
 
 def test_audience_rows_missing_renter_id_are_skipped_with_warning(log_path: Path) -> None:

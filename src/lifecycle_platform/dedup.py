@@ -35,8 +35,6 @@ class SentLog:
         """Filesystem path of the underlying JSON sent log."""
         return self._path
 
-    # -- read -------------------------------------------------------------
-
     def load(self, campaign_id: str) -> set[str]:
         """Return the set of renter_ids already sent for ``campaign_id``.
 
@@ -46,8 +44,6 @@ class SentLog:
         with self._lock:
             data = self._read_all()
         return set(data.get(campaign_id, []))
-
-    # -- write ------------------------------------------------------------
 
     def extend(self, campaign_id: str, renter_ids: Iterable[str]) -> None:
         """Append ``renter_ids`` to the campaign's sent set, atomically."""
@@ -61,8 +57,6 @@ class SentLog:
             existing.update(new_ids)
             data[campaign_id] = sorted(existing)
             self._atomic_write(data)
-
-    # -- internals --------------------------------------------------------
 
     def _read_all(self) -> dict[str, list[str]]:
         if not self._path.exists() or self._path.stat().st_size == 0:

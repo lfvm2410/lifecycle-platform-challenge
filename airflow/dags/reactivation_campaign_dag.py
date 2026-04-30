@@ -38,17 +38,14 @@ from airflow.decorators import dag, task
 from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.sensors.base import PokeReturnValue
 
-# Make the in-repo ``src`` importable from the Airflow worker. In production
-# the package would be ``pip install``ed into the worker image.
+# In production the lifecycle_platform package would be installed into the
+# worker image; in the repo we point sys.path at src/ so the DAG resolves it.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SRC = _REPO_ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-# ---------------------------------------------------------------------------
-# Constants - in production these are Airflow Variables / Connections
-# ---------------------------------------------------------------------------
-
+# Configuration (Airflow Variables / Connections in production).
 CAMPAIGN_ID = "reactivation_sms_v1"
 GCP_PROJECT = "lifecycle-prod"
 DATASET = "lifecycle"
@@ -59,7 +56,6 @@ ESP_API_KEY_VAR = "esp_api_key"
 SENT_LOG_PATH = "/var/lifecycle/sent_renters.json"
 ANOMALY_MULTIPLIER = 2.0  # validate fails if today's audience > 2x rolling mean
 
-# --- Part 4: value-model integration -------------------------------------
 MODEL_TABLE = "ml_predictions.renter_send_scores"
 """BigQuery table holding daily per-renter conversion-probability scores."""
 
@@ -74,11 +70,6 @@ MODEL_FRESHNESS_POKE_INTERVAL_SECONDS = 5 * 60
 
 MODEL_FRESHNESS_TIMEOUT_SECONDS = 2 * 60 * 60
 """How long the freshness sensor will wait before the segment fails (2 h)."""
-
-
-# ---------------------------------------------------------------------------
-# Callbacks
-# ---------------------------------------------------------------------------
 
 
 def _slack_notify(text: str) -> None:
@@ -111,10 +102,6 @@ def _on_sla_miss(dag, task_list, blocking_task_list, slas, blocking_tis) -> None
         f"({len(slas)} task(s) overdue): {[s.task_id for s in slas]}"
     )
 
-
-# ---------------------------------------------------------------------------
-# DAG
-# ---------------------------------------------------------------------------
 
 DEFAULT_ARGS: dict[str, Any] = {
     "owner": "lifecycle-platform",
@@ -247,6 +234,7 @@ def reactivation_campaign() -> None:
     @task
     def send_campaign(validated: dict[str, Any]) -> dict[str, Any]:
         """Stream the staging table to the ESP via execute_campaign_send."""
+
         staging_table = validated["staging_table"]
         audience_size = validated["audience_size"]
 
@@ -274,6 +262,7 @@ def reactivation_campaign() -> None:
     @task
     def report_and_notify(summary: dict[str, Any], ds: str) -> None:
         """Persist the summary + post a Slack message with the headline numbers."""
+
         from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 
         bq = BigQueryHook(use_legacy_sql=False)
@@ -309,13 +298,8 @@ def reactivation_campaign() -> None:
             f"elapsed={summary['elapsed_seconds']}s"
         )
 
-    # ------------------------------------------------------------------
-    # Linear dependency graph
-    #
-    # The freshness sensor returns no data, but having ``run_audience_query``
-    # depend on it via ``set_upstream`` ensures the scored SQL never runs
-    # against a stale (or missing) score partition.
-    # ------------------------------------------------------------------
+    # The sensor passes no XCom data to ``run_audience_query``, so we wire the
+    # dependency explicitly to keep the chain strictly linear.
     fresh = wait_for_model_freshness()
     staging = run_audience_query()
     fresh >> staging

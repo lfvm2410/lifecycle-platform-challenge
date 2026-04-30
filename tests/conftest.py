@@ -1,11 +1,10 @@
 """Shared pytest fixtures for the SQL harness and Python tests.
 
-The SQL harness loads the canonical BigQuery `.sql` files, transpiles them to
-DuckDB via `sqlglot`, and runs them against in-memory DuckDB tables seeded
-from the CSV fixtures in `tests/fixtures/`.
-
-This lets reviewers run the full test suite offline, with no GCP credentials,
-while keeping a single canonical SQL artifact per query.
+The SQL harness loads the canonical BigQuery ``.sql`` files, rewrites a small
+set of BigQuery-specific functions into their DuckDB equivalents, and runs
+the result against an in-memory DuckDB connection seeded by the ``insert``
+fixture below. This lets reviewers run the full test suite offline, with no
+GCP credentials, while keeping a single canonical SQL artifact per query.
 """
 
 from __future__ import annotations
@@ -24,10 +23,6 @@ SQL_DIR = REPO_ROOT / "sql"
 
 DEFAULT_RUN_DATE = date(2025, 4, 29)
 
-
-# ---------------------------------------------------------------------------
-# SQL rendering
-# ---------------------------------------------------------------------------
 
 _DECLARE_RE = re.compile(
     r"^\s*DECLARE\s+\w+\s+\w+\s+DEFAULT\s+[^;]+;\s*$",
@@ -97,10 +92,6 @@ def render_sql_for_duckdb(
 def transpile_with_sqlglot(sql: str) -> str:  # pragma: no cover - convenience
     return sqlglot.transpile(sql, read="bigquery", write="duckdb")[0]
 
-
-# ---------------------------------------------------------------------------
-# DuckDB session
-# ---------------------------------------------------------------------------
 
 _TABLE_COLUMNS = {
     "renter_activity": [

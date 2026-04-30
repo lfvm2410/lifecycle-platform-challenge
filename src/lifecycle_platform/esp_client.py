@@ -40,13 +40,13 @@ class ESPClient:
         self.base_url = base_url
 
     def send_batch(self, campaign_id: str, recipients: list[dict[str, Any]]) -> Response:
-        """Sends a batch of recipients to the ESP.
+        """Send a batch of recipients to the ESP.
 
-        Returns a Response with .status_code and .json().
+        Returns a ``Response`` with ``.status_code`` and ``.json()``. The real
+        implementation would POST to ``{base_url}/campaigns/{id}/sends`` using
+        ``self.api_key``; this stub raises so any caller that forgets to
+        monkey-patch it in tests fails loudly.
         """
-        # Real implementation would POST to {base_url}/campaigns/{id}/sends
-        # using self.api_key. This stub raises so anyone who wires the real
-        # client without monkey-patching it in tests fails loudly.
         raise NotImplementedError(
             "ESPClient.send_batch is provided by the platform; " "tests must patch this method."
         )

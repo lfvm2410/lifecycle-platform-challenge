@@ -78,9 +78,6 @@ def _ids(rows) -> set[str]:
     return {r[0] for r in rows}
 
 
-# ---------------------------------------------------------------------------
-
-
 def test_returns_score_columns(duck, insert) -> None:
     insert("renter_profiles", [_profile("r_pass")])
     insert("renter_activity", _searches("r_pass", 3))
