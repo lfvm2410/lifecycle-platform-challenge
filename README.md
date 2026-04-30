@@ -31,11 +31,22 @@ make check
 # 4. (Optional) install Airflow and parse the DAG
 make install-airflow
 make dag-check
+
+# 5. (Optional) run Airflow locally to view the DAG in the UI
+make airflow-up   # UI on http://localhost:8080, admin password printed to stdout
 ```
 
 The Airflow group is **opt-in** because it pulls a large dependency tree that is
 not needed for the SQL or sender tests. CI runs `make check` for the fast lane
 and `make install-airflow dag-check` as a separate job.
+
+`make airflow-up` runs `airflow standalone` (scheduler + triggerer + webserver,
+SQLite metadata DB) with `AIRFLOW_HOME` pinned to `./.airflow/` and the DAGs
+folder pointed at `airflow/dags/`, so it never touches `~/airflow`. Tear it down
+with Ctrl-C and `make airflow-clean`. The DAG **parses** without any provider
+extras, but **triggering** a real run will fail on the first BigQuery / Slack
+call — the local server is intended for browsing the graph and code, not for
+end-to-end execution.
 
 ## Layout
 

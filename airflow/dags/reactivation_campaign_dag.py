@@ -234,7 +234,6 @@ def reactivation_campaign() -> None:
     @task
     def send_campaign(validated: dict[str, Any]) -> dict[str, Any]:
         """Stream the staging table to the ESP via execute_campaign_send."""
-
         staging_table = validated["staging_table"]
         audience_size = validated["audience_size"]
 
@@ -262,7 +261,6 @@ def reactivation_campaign() -> None:
     @task
     def report_and_notify(summary: dict[str, Any], ds: str) -> None:
         """Persist the summary + post a Slack message with the headline numbers."""
-
         from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 
         bq = BigQueryHook(use_legacy_sql=False)

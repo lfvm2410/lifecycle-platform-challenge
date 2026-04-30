@@ -41,6 +41,7 @@ sent_renters.json
 logs/
 
 # Airflow local state (when run locally)
+.airflow/
 airflow.db
 airflow-webserver.pid
 standalone_admin_password.txt
