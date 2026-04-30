@@ -26,8 +26,11 @@ from tenacity import (
 
 from lifecycle_platform.esp_client import Response
 
-DEFAULT_MAX_ATTEMPTS = 5
-"""Total attempts (initial call + retries) before giving up."""
+DEFAULT_MAX_RETRIES = 5
+"""Number of retries on top of the initial attempt (per the prompt: 'max 5 retries').
+
+Total calls per batch is therefore ``DEFAULT_MAX_RETRIES + 1 = 6``.
+"""
 
 DEFAULT_BASE_SECONDS = 1.0
 """Initial backoff multiplier; tenacity randomises the actual wait."""
@@ -44,14 +47,13 @@ def is_rate_limited(response: Response) -> bool:
     5xx errors are surfaced to the caller and handled by the per-batch
     try/except so they don't block the rest of the run.
     """
-
     return response.status_code == 429
 
 
 def call_with_retry(
     func: Callable[..., Response],
     *args: Any,
-    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    max_retries: int = DEFAULT_MAX_RETRIES,
     base_seconds: float = DEFAULT_BASE_SECONDS,
     max_seconds: float = DEFAULT_MAX_SECONDS,
     **kwargs: Any,
@@ -59,15 +61,14 @@ def call_with_retry(
     """Invoke ``func(*args, **kwargs)``, retrying only on HTTP 429.
 
     Exponential backoff with jitter is implemented by tenacity's
-    ``wait_random_exponential`` (a.k.a. "full jitter"). After
-    ``max_attempts`` rate-limited responses we return the last
-    ``Response`` so the caller can log it and move on.
+    ``wait_random_exponential`` (a.k.a. "full jitter"). The function makes
+    up to ``max_retries + 1`` calls (1 initial + N retries) before returning
+    the last ``Response`` so the caller can log it and move on.
     """
-
     retryer = Retrying(
         retry=retry_if_result(is_rate_limited),
         wait=wait_random_exponential(multiplier=base_seconds, max=max_seconds),
-        stop=stop_after_attempt(max_attempts),
+        stop=stop_after_attempt(max_retries + 1),
         reraise=True,
     )
     try:

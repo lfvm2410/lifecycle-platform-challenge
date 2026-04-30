@@ -68,7 +68,6 @@ def render_sql_for_duckdb(
 
     The result is a single statement DuckDB can execute directly.
     """
-
     raw = sql_path.read_text()
     iso = run_date.isoformat()
 
@@ -192,7 +191,6 @@ def duck() -> Iterator[duckdb.DuckDBPyConnection]:
     Tests can call ``load_fixture(duck, name)`` or insert rows directly
     via ``duck.execute("INSERT INTO ...")``.
     """
-
     con = duckdb.connect(":memory:")
     for ddl in _DDL.values():
         # DDL blocks may contain a CREATE SCHEMA + CREATE TABLE pair separated
@@ -215,7 +213,6 @@ def insert_rows(
     Missing keys default to NULL, so each test only writes the fields it cares
     about and the rest fall back to neutral defaults.
     """
-
     if table not in _TABLE_COLUMNS:
         raise KeyError(f"unknown fixture table: {table}")
     cols = _TABLE_COLUMNS[table]

@@ -1,8 +1,10 @@
 """Daily SMS reactivation campaign DAG.
 
-Pipeline (linear, 4 tasks):
+Pipeline (linear, 5 tasks; the ``wait_for_model_freshness`` sensor is the
+Part-4 evolution that gates the send on today's value-model scores):
 
-    run_audience_query  ->  validate_audience  ->  send_campaign  ->  report_and_notify
+    wait_for_model_freshness  ->  run_audience_query  ->  validate_audience
+                              ->  send_campaign       ->  report_and_notify
 
 Operational requirements
 ------------------------
@@ -34,6 +36,7 @@ from typing import Any
 
 from airflow.decorators import dag, task
 from airflow.exceptions import AirflowFailException, AirflowSkipException
+from airflow.sensors.base import PokeReturnValue
 
 # Make the in-repo ``src`` importable from the Airflow worker. In production
 # the package would be ``pip install``ed into the worker image.
@@ -55,6 +58,22 @@ SLACK_CONN_ID = "slack_lifecycle_alerts"
 ESP_API_KEY_VAR = "esp_api_key"
 SENT_LOG_PATH = "/var/lifecycle/sent_renters.json"
 ANOMALY_MULTIPLIER = 2.0  # validate fails if today's audience > 2x rolling mean
+
+# --- Part 4: value-model integration -------------------------------------
+MODEL_TABLE = "ml_predictions.renter_send_scores"
+"""BigQuery table holding daily per-renter conversion-probability scores."""
+
+CONVERSION_THRESHOLD = 0.30
+"""Minimum predicted conversion probability for a renter to be sent.
+
+In production this is loaded from ``config/segments.yaml`` per segment.
+"""
+
+MODEL_FRESHNESS_POKE_INTERVAL_SECONDS = 5 * 60
+"""How often the freshness sensor checks the score table (5 min)."""
+
+MODEL_FRESHNESS_TIMEOUT_SECONDS = 2 * 60 * 60
+"""How long the freshness sensor will wait before the segment fails (2 h)."""
 
 
 # ---------------------------------------------------------------------------
@@ -121,37 +140,70 @@ DEFAULT_ARGS: dict[str, Any] = {
     tags=["lifecycle", "sms", "reactivation"],
 )
 def reactivation_campaign() -> None:
-    """Define the four-task linear pipeline."""
+    """Define the five-task linear pipeline."""
+
+    @task.sensor(
+        poke_interval=MODEL_FRESHNESS_POKE_INTERVAL_SECONDS,
+        timeout=MODEL_FRESHNESS_TIMEOUT_SECONDS,
+        mode="reschedule",
+    )
+    def wait_for_model_freshness(ds: str) -> PokeReturnValue:
+        """Block the pipeline until today's model scores have landed.
+
+        Polls ``MODEL_TABLE`` for at least one row with ``DATE(scored_at) =
+        ds``. Uses ``mode="reschedule"`` so the worker slot is released
+        between pokes (the model job typically takes 30-90 min). On timeout
+        the DAG fails and the on-failure callback alerts Slack; the next
+        scheduled run picks up automatically because the sent log is durable
+        across runs.
+        """
+        from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
+
+        bq = BigQueryHook(use_legacy_sql=False)
+        row = bq.get_first(
+            f"SELECT MAX(scored_at) FROM `{GCP_PROJECT}.{MODEL_TABLE}` "
+            f"WHERE DATE(scored_at) = '{ds}'"
+        )
+        latest = row[0] if row else None  # type: ignore[index]
+        return PokeReturnValue(is_done=latest is not None)
 
     @task
     def run_audience_query(ds: str) -> str:
-        """Materialise today's audience into a date-suffixed staging table.
+        """Materialise today's *scored* audience into a date-suffixed staging table.
 
-        Returns the fully qualified staging table id so downstream tasks have
-        a single source of truth (passed through XCom).
+        Uses ``sql/part4_audience_scored.sql`` so the threshold filter is
+        applied at query time and downstream tasks only see eligible,
+        high-probability renters. Returns the fully qualified staging table
+        id so downstream tasks have a single source of truth (passed
+        through XCom).
         """
         from airflow.providers.google.cloud.operators.bigquery import (
             BigQueryInsertJobOperator,
         )
 
         staging_table = (
-            f"{GCP_PROJECT}.{STAGING_DATASET}." f"reactivation_audience_{ds.replace('-', '')}"
+            f"{GCP_PROJECT}.{STAGING_DATASET}.reactivation_audience_{ds.replace('-', '')}"
         )
-        sql_path = _REPO_ROOT / "sql" / "part1_audience.sql"
+        sql_path = _REPO_ROOT / "sql" / "part4_audience_scored.sql"
         rendered = sql_path.read_text()
 
         op = BigQueryInsertJobOperator(
             task_id="_inline_bq_audience",
             configuration={
                 "query": {
-                    "query": (f"CREATE OR REPLACE TABLE `{staging_table}` AS\n" f"{rendered}"),
+                    "query": f"CREATE OR REPLACE TABLE `{staging_table}` AS\n{rendered}",
                     "useLegacySql": False,
                     "queryParameters": [
                         {
                             "name": "run_date",
                             "parameterType": {"type": "DATE"},
                             "parameterValue": {"value": ds},
-                        }
+                        },
+                        {
+                            "name": "threshold",
+                            "parameterType": {"type": "FLOAT64"},
+                            "parameterValue": {"value": str(CONVERSION_THRESHOLD)},
+                        },
                     ],
                 }
             },
@@ -195,7 +247,6 @@ def reactivation_campaign() -> None:
     @task
     def send_campaign(validated: dict[str, Any]) -> dict[str, Any]:
         """Stream the staging table to the ESP via execute_campaign_send."""
-
         staging_table = validated["staging_table"]
         audience_size = validated["audience_size"]
 
@@ -223,7 +274,6 @@ def reactivation_campaign() -> None:
     @task
     def report_and_notify(summary: dict[str, Any], ds: str) -> None:
         """Persist the summary + post a Slack message with the headline numbers."""
-
         from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 
         bq = BigQueryHook(use_legacy_sql=False)
@@ -261,8 +311,14 @@ def reactivation_campaign() -> None:
 
     # ------------------------------------------------------------------
     # Linear dependency graph
+    #
+    # The freshness sensor returns no data, but having ``run_audience_query``
+    # depend on it via ``set_upstream`` ensures the scored SQL never runs
+    # against a stale (or missing) score partition.
     # ------------------------------------------------------------------
+    fresh = wait_for_model_freshness()
     staging = run_audience_query()
+    fresh >> staging
     validated = validate_audience(staging)
     summary = send_campaign(validated)
     report_and_notify(summary)

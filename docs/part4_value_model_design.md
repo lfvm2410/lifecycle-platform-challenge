@@ -58,15 +58,16 @@ current ask but called out in `config/segments.yaml` for the future.
 
 ## 2. DAG: depending on a fresh model table
 
-### Sensor placement
+### Sensor placement (implemented)
 
-Add a single sensor task between `run_audience_query` and `validate_audience`:
+The DAG now runs the freshness sensor **before** the audience query so the
+scored SQL never executes against a missing or stale score partition:
 
 ```text
-run_audience_query
+wait_for_model_freshness   <-- Part 4 addition
         |
         v
-wait_for_model_freshness   <-- new
+run_audience_query   (uses sql/part4_audience_scored.sql with @threshold)
         |
         v
 validate_audience
@@ -78,26 +79,32 @@ send_campaign
 report_and_notify
 ```
 
-Implementation choice: **`BigQueryTablePartitionExistenceSensor`** when the
-score table is daily-partitioned (the cheap path), or a custom
-`@task.sensor` running `SELECT MAX(scored_at) FROM {model_table} WHERE
-DATE(scored_at) = '{{ ds }}'` when it isn't:
+The implementation lives in
+[`airflow/dags/reactivation_campaign_dag.py`](../airflow/dags/reactivation_campaign_dag.py)
+as a `@task.sensor`:
 
 ```python
-@task.sensor(poke_interval=300, timeout=2 * 3600, mode="reschedule")
-def wait_for_model_freshness(model_table: str, ds: str) -> PokeReturnValue:
+@task.sensor(
+    poke_interval=MODEL_FRESHNESS_POKE_INTERVAL_SECONDS,
+    timeout=MODEL_FRESHNESS_TIMEOUT_SECONDS,
+    mode="reschedule",
+)
+def wait_for_model_freshness(ds: str) -> PokeReturnValue:
     bq = BigQueryHook(use_legacy_sql=False)
     row = bq.get_first(
-        f"SELECT MAX(scored_at) FROM `{model_table}` "
+        f"SELECT MAX(scored_at) FROM `{GCP_PROJECT}.{MODEL_TABLE}` "
         f"WHERE DATE(scored_at) = '{ds}'"
     )
-    fresh = row and row[0] is not None
-    return PokeReturnValue(is_done=bool(fresh))
+    return PokeReturnValue(is_done=row[0] is not None)
 ```
 
 `mode="reschedule"` releases the worker slot between pokes — important since
 the model job typically takes 30-90 min and we don't want to monopolise a
-slot.
+slot. For a daily-partitioned score table, the same effect can be obtained
+more cheaply with the built-in
+`BigQueryTablePartitionExistenceSensor`; the `@task.sensor` form is more
+flexible (e.g. it can also assert that the row count exceeds a sanity
+threshold) and is what we ship.
 
 ### Multi-segment generalisation
 

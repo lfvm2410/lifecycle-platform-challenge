@@ -46,9 +46,16 @@ def test_default_args_match_spec(dag_bag) -> None:
     assert args["sla"] == timedelta(hours=3)
 
 
-def test_four_tasks_in_linear_order(dag_bag) -> None:
+def test_tasks_in_linear_order(dag_bag) -> None:
+    """The DAG is the Part-3 deliverable evolved with Part-4's freshness sensor.
+
+    Linear chain (5 tasks):
+      wait_for_model_freshness -> run_audience_query -> validate_audience
+                               -> send_campaign      -> report_and_notify
+    """
     dag = dag_bag.get_dag("reactivation_campaign")
     expected = [
+        "wait_for_model_freshness",
         "run_audience_query",
         "validate_audience",
         "send_campaign",
@@ -56,13 +63,20 @@ def test_four_tasks_in_linear_order(dag_bag) -> None:
     ]
     assert sorted(t.task_id for t in dag.tasks) == sorted(expected)
 
-    # Verify the linear chain: each task has exactly one upstream/downstream
-    # except the endpoints.
     by_id = {t.task_id: t for t in dag.tasks}
-    assert by_id["run_audience_query"].upstream_task_ids == set()
+    assert by_id["wait_for_model_freshness"].upstream_task_ids == set()
+    assert by_id["run_audience_query"].upstream_task_ids == {"wait_for_model_freshness"}
     assert by_id["validate_audience"].upstream_task_ids == {"run_audience_query"}
     assert by_id["send_campaign"].upstream_task_ids == {"validate_audience"}
     assert by_id["report_and_notify"].upstream_task_ids == {"send_campaign"}
+
+
+def test_freshness_sensor_uses_reschedule_mode(dag_bag) -> None:
+    dag = dag_bag.get_dag("reactivation_campaign")
+    sensor = dag.get_task("wait_for_model_freshness")
+    assert sensor.mode == "reschedule"
+    assert sensor.poke_interval == 5 * 60
+    assert sensor.timeout == 2 * 60 * 60
 
 
 def test_failure_callback_is_wired(dag_bag) -> None:

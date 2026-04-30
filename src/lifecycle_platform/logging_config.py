@@ -21,7 +21,6 @@ _CONFIGURED = False
 
 def configure_logging(level: int = logging.INFO) -> None:
     """Configure stdlib logging and structlog to emit JSON to stdout."""
-
     global _CONFIGURED
     if _CONFIGURED:
         return

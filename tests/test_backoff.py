@@ -48,16 +48,17 @@ def test_retries_on_429_then_succeeds() -> None:
     assert fn.calls == 3
 
 
-def test_gives_up_after_max_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
-    fn = _Counter([Response(429)] * 5)
+def test_gives_up_after_max_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The prompt asks for max 5 retries, i.e. 1 initial + 5 = 6 total calls."""
+    fn = _Counter([Response(429)] * 6)
     result = call_with_retry(
         fn,
-        max_attempts=5,
+        max_retries=5,
         base_seconds=0.0,
         max_seconds=0.0,
     )
     assert result.status_code == 429
-    assert fn.calls == 5
+    assert fn.calls == 6
 
 
 def test_non_429_errors_are_not_retried() -> None:

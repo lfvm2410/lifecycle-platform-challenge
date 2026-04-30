@@ -32,6 +32,7 @@ class SentLog:
 
     @property
     def path(self) -> Path:
+        """Filesystem path of the underlying JSON sent log."""
         return self._path
 
     # -- read -------------------------------------------------------------
@@ -42,7 +43,6 @@ class SentLog:
         A missing or empty file is treated as "nothing sent yet" so that
         first-run callers don't need to special-case bootstrapping.
         """
-
         with self._lock:
             data = self._read_all()
         return set(data.get(campaign_id, []))
@@ -51,7 +51,6 @@ class SentLog:
 
     def extend(self, campaign_id: str, renter_ids: Iterable[str]) -> None:
         """Append ``renter_ids`` to the campaign's sent set, atomically."""
-
         new_ids = list(renter_ids)
         if not new_ids:
             return

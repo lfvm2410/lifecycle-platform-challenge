@@ -65,6 +65,16 @@ ai-session/                     Exported AI assistant chats (AI Fluency)
 5. **Slack webhook**, **BigQuery service account**, and **ESP API key** are
    referenced via Airflow Connections / Variables — no secrets are stored
    in the repo.
+6. **"Phone on file" interpretation**: the schema only mandates `phone IS NOT
+   NULL`, but the audience query also excludes empty strings (`phone != ''`).
+   Empty strings are the most common dirty-data case for free-form phone
+   fields and shipping an SMS to one would 100% fail at the carrier; both
+   variants are covered by tests.
+7. **`total_skipped` semantics**: the counter aggregates *every* recipient
+   that the sender chose not to ship to during this run — both dedup hits
+   (already in the sent log) and defensive drops (rows missing a
+   `renter_id`). Defensive drops emit a `WARN` log line so they're auditable
+   even though they share a counter with dedup.
 
 ## Design decisions and tradeoffs
 

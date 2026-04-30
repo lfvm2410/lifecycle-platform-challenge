@@ -57,7 +57,6 @@ def execute_campaign_send(
     Returns a dict with the four keys the prompt specifies:
     ``total_sent``, ``total_failed``, ``total_skipped``, ``elapsed_seconds``.
     """
-
     started = time.perf_counter()
     log = logger.bind(campaign_id=campaign_id, audience_size=len(audience))
     log.info("campaign_send.start")

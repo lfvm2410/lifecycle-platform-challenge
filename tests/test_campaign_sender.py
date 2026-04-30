@@ -158,8 +158,8 @@ def test_persistent_429_counts_as_failure(log_path: Path, monkeypatch: pytest.Mo
 
     assert summary["total_sent"] == 0
     assert summary["total_failed"] == 3
-    # 5 attempts per the policy.
-    assert len(esp.calls) == 5
+    # 1 initial + 5 retries per the policy = 6 total calls.
+    assert len(esp.calls) == 6
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +219,6 @@ def test_all_batches_fail_returns_zero_sent(log_path: Path) -> None:
 
 def test_crash_after_first_batch_does_not_double_send_on_retry(log_path: Path) -> None:
     """Simulate a crash mid-run: first batch persisted, then exception."""
-
     state = {"call": 0}
 
     def crashing(_c, _b):

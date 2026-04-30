@@ -23,6 +23,7 @@ class Response:
     body: dict[str, Any] = field(default_factory=dict)
 
     def json(self) -> dict[str, Any]:
+        """Return the parsed JSON body, mirroring ``requests.Response.json``."""
         return self.body
 
 
@@ -47,6 +48,5 @@ class ESPClient:
         # using self.api_key. This stub raises so anyone who wires the real
         # client without monkey-patching it in tests fails loudly.
         raise NotImplementedError(
-            "ESPClient.send_batch is provided by the platform; "
-            "tests must patch this method."
+            "ESPClient.send_batch is provided by the platform; " "tests must patch this method."
         )

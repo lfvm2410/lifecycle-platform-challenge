@@ -68,19 +68,45 @@ target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
+# A PEP 8 / PEP 257 oriented rule set. Each prefix maps to:
+#   E, W : pycodestyle (PEP 8 errors and warnings)
+#   F    : pyflakes (undefined names, unused imports, etc.)
+#   I    : isort (import ordering, PEP 8 section)
+#   N    : pep8-naming (snake_case / CapWords / UPPER_CASE conventions)
+#   D    : pydocstyle (PEP 257 docstring conventions, Google convention)
+#   B    : flake8-bugbear (likely bugs)
+#   UP   : pyupgrade (modern Python idioms)
+#   SIM  : flake8-simplify
+#   C4   : comprehensions
+#   RET  : return patterns
+#   PT   : pytest style
 select = [
-    "E", "F", "W",  # pycodestyle / pyflakes
-    "I",            # isort
-    "B",            # bugbear
-    "UP",           # pyupgrade
-    "SIM",          # simplify
-    "C4",           # comprehensions
-    "RET",          # return patterns
+    "E", "F", "W", "I", "N", "D",
+    "B", "UP", "SIM", "C4", "RET", "PT",
 ]
-ignore = ["E501"]  # line length handled by black
+ignore = [
+    "E501",   # line length handled by black
+    "D100",   # missing module docstring (false-positive on __init__.py)
+    "D104",   # missing docstring in public package
+    "D105",   # missing docstring in magic method
+    "D107",   # missing docstring in __init__
+    "D203",   # incompatible with D211
+    "D213",   # incompatible with D212
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["B011"]
+# Tests and DAGs don't need PEP 257 docstrings on every helper.
+"tests/*" = [
+    "B011",
+    "D101", "D102", "D103",  # missing docstrings
+    "PT011",                  # bare pytest.raises(ValueError) is fine here
+]
+"airflow/dags/*" = [
+    "D101", "D102", "D103",
+]
 
 [tool.mypy]
 python_version = "3.11"

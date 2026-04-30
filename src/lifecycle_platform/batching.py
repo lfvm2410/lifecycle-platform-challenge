@@ -25,7 +25,6 @@ def chunk(items: Iterable[T], size: int = DEFAULT_BATCH_SIZE) -> Iterator[list[T
     Raises ``ValueError`` for non-positive ``size`` so a misconfiguration
     surfaces immediately rather than running an infinite loop.
     """
-
     if size <= 0:
         raise ValueError(f"batch size must be positive, got {size}")
 

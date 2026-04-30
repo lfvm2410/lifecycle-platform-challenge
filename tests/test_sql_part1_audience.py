@@ -301,7 +301,7 @@ def test_query_is_idempotent(duck, insert) -> None:
 
 
 @pytest.mark.parametrize(
-    "run_date,expected_days",
+    ("run_date", "expected_days"),
     [
         (date(2025, 4, 29), 104),
         (date(2025, 5, 30), 135),
