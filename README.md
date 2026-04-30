@@ -33,20 +33,30 @@ make install-airflow
 make dag-check
 
 # 5. (Optional) run Airflow locally to view the DAG in the UI
-make airflow-up   # UI on http://localhost:8080, admin password printed to stdout
+make airflow-up   # UI on http://localhost:8088, login admin / admin
+# When you're done: Ctrl-C the foreground, then `make airflow-down` to be sure
+# nothing is left listening on the port.
 ```
 
 The Airflow group is **opt-in** because it pulls a large dependency tree that is
 not needed for the SQL or sender tests. CI runs `make check` for the fast lane
 and `make install-airflow dag-check` as a separate job.
 
-`make airflow-up` runs `airflow standalone` (scheduler + triggerer + webserver,
-SQLite metadata DB) with `AIRFLOW_HOME` pinned to `./.airflow/` and the DAGs
-folder pointed at `airflow/dags/`, so it never touches `~/airflow`. Tear it down
-with Ctrl-C and `make airflow-clean`. The DAG **parses** without any provider
-extras, but **triggering** a real run will fail on the first BigQuery / Slack
-call — the local server is intended for browsing the graph and code, not for
-end-to-end execution.
+`make airflow-up` runs `scripts/airflow_local.sh`, which boots scheduler +
+triggerer in the background and the webserver in the foreground (Flask dev
+server, **not** gunicorn — `airflow standalone`'s gunicorn-based webserver
+SIGSEGV-loops on macOS / Apple Silicon). `AIRFLOW_HOME` is pinned to
+`./.airflow/` and the DAGs folder to `airflow/dags/`, so it never touches
+`~/airflow`. The default port is **8088** (8080 collides too often with Tomcat
+/ Jenkins / Docker apps); override with `make airflow-up AIRFLOW_PORT=8081` if
+needed. The script refuses to start if the chosen port is already taken so you
+don't fall into a silent bind-retry loop. Default login is `admin / admin`
+(override with `ADMIN_USER` / `ADMIN_PASS` env vars). Tear it down with Ctrl-C
+(traps cleanup of the background processes), then `make airflow-down` to kill
+any stragglers, and `make airflow-clean` to also wipe `./.airflow/`. The DAG
+**parses** without any provider extras, but **triggering** a real run will fail
+on the first BigQuery / Slack call — the local server is intended for browsing
+the graph and code, not for end-to-end execution.
 
 ## Layout
 
